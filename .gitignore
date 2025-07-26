@@ -97,6 +97,9 @@ firebase_options.dart
 # Appwrite
 appwrite.json
 
+# Firebase service account
+scripts/firebase-service-account.json
+
 # Logs
 *.log
 
