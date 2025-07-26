@@ -1,0 +1,28 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .orange { fill: #f4511e; }
+    .black { fill: #000; }
+    .white { fill: #fff; }
+    .stroke { stroke: #000; stroke-width: 2; fill: none; }
+  </style>
+
+  <!-- Personnage -->
+  <circle id="head" cx="200" cy="100" r="30" class="orange" />
+  <rect id="body" x="160" y="130" width="80" height="100" rx="20" class="orange" />
+
+  <!-- Smartphone -->
+  <rect id="phone" x="185" y="160" width="30" height="50" rx="5" class="black" />
+
+  <!-- Icône IA -->
+  <g id="ai-icon">
+    <circle cx="70" cy="60" r="20" class="orange" />
+    <path d="M60 60 Q70 40 80 60 Q70 80 60 60" class="white"/>
+    <circle cx="65" cy="55" r="2" class="white"/>
+    <circle cx="75" cy="55" r="2" class="white"/>
+  </g>
+
+  <!-- Icônes suggestions -->
+  <rect id="icon-car" x="300" y="50" width="40" height="20" class="orange" rx="5"/>
+  <rect id="icon-shirt" x="70" y="250" width="40" height="40" class="orange"/>
+  <rect id="icon-wardrobe" x="280" y="260" width="40" height="60" class="orange"/>
+</svg>

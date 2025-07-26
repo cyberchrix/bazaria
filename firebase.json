@@ -1,0 +1,13 @@
+{
+    "hosting": {},
+    "appdistribution": {
+      "android": {
+        "appId": "1:37765893340:android:22e978a948d6e0f3f37819", 
+        "testers": "chenry59@gmail.com"
+      },
+      "ios": {
+        "appId": "1:37765893340:ios:b9b8a037f5f41caff37819",
+        "testers": "chenry59@gmail.com"
+      }
+    }
+  }
