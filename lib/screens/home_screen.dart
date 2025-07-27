@@ -23,6 +23,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import '../services/notification_service.dart';
 import '../services/favorites_service.dart';
+import '../services/criteria_service.dart';
+import '../models/criterion.dart';
 import '../widgets/ad_card.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -944,6 +946,78 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   int _currentImageIndex = 0;
   final PageController _imagePageController = PageController();
 
+  Future<Map<String, dynamic>> _loadCriteriaData() async {
+    try {
+      logger.d('🔍 Début _loadCriteriaData pour annonce: ${widget.ad.title}');
+      logger.d('🔍 Criterias bruts: ${widget.ad.criterias}');
+      logger.d('🔍 Type de criterias: ${widget.ad.criterias.runtimeType}');
+      
+      // Parser les critères de l'annonce
+      List<Map<String, dynamic>> criteriaList = [];
+      if (widget.ad.criterias != null && widget.ad.criterias.toString().isNotEmpty) {
+        try {
+          if (widget.ad.criterias is String) {
+            criteriaList = List<Map<String, dynamic>>.from(jsonDecode(widget.ad.criterias));
+          } else {
+            criteriaList = List<Map<String, dynamic>>.from(widget.ad.criterias);
+          }
+          logger.d('✅ Critères parsés: $criteriaList');
+        } catch (e) {
+          logger.e('❌ Erreur parsing critères: $e');
+          return {};
+        }
+      }
+      
+      if (criteriaList.isEmpty) {
+        logger.w('⚠️ Aucun critère trouvé dans l\'annonce');
+        return {};
+      }
+      
+      // Extraire les IDs des critères
+      List<String> criteriaIds = criteriaList.map((c) => c['id_criteria'] as String).toList();
+      logger.d('🔍 IDs des critères: $criteriaIds');
+      
+      // Récupérer les labels depuis Appwrite
+      logger.d('📡 Récupération des labels depuis Appwrite...');
+      final labels = await CriteriaService.getCriteriaLabels(criteriaIds);
+      logger.d('📋 Labels récupérés: $labels');
+      
+      // Créer le map final avec labels (en évitant les doublons)
+      Map<String, dynamic> criteriaWithLabels = {};
+      Set<String> seenValues = {}; // Pour détecter les doublons de valeurs
+      
+      for (Map<String, dynamic> criteria in criteriaList) {
+        final criteriaId = criteria['id_criteria'] as String;
+        final value = criteria['value'] as String;
+        final label = labels[criteriaId] ?? criteriaId;
+        
+        // Éviter les doublons : si on a déjà vu cette valeur avec un label correct, on ignore
+        if (seenValues.contains(value) && (labels[criteriaId] == null || labels[criteriaId] == criteriaId)) {
+          logger.d('🔄 Doublon ignoré: $criteriaId -> $label = $value (déjà présent)');
+          continue;
+        }
+        
+        // Si on a un label correct, on remplace l'ancien
+        if (labels[criteriaId] != null && labels[criteriaId] != criteriaId) {
+          criteriaWithLabels[label] = value;
+          seenValues.add(value);
+          logger.d('✅ Critère ajouté: $criteriaId -> $label = $value');
+        } else if (labels[criteriaId] == null && !seenValues.contains(value)) {
+          // Si pas de label trouvé mais valeur unique, on garde
+          criteriaWithLabels[label] = value;
+          seenValues.add(value);
+          logger.d('⚠️ Critère sans label: $criteriaId -> $label = $value');
+        }
+      }
+      
+      logger.d('✅ Critères finaux: $criteriaWithLabels');
+      return criteriaWithLabels;
+    } catch (e) {
+      logger.e('❌ Erreur chargement critères: $e');
+      return {};
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
                         return Scaffold(
@@ -1121,31 +1195,52 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                     const SizedBox(height: 20),
                     // Critères et description
-                    Builder(
-                      builder: (context) {
-                        Map<String, dynamic> criterias = {};
-                        if (widget.ad.criterias != null && widget.ad.criterias.toString().isNotEmpty) {
-                          try {
-                            criterias = widget.ad.criterias is String
-                                ? Map<String, dynamic>.from(jsonDecode(widget.ad.criterias))
-                                : Map<String, dynamic>.from(widget.ad.criterias);
-                          } catch (_) {}
+                    FutureBuilder<Map<String, dynamic>>(
+                      future: _loadCriteriaData(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
                         }
-                        if (criterias.isEmpty) return const SizedBox.shrink();
+                        
+                        if (snapshot.hasError) {
+                          return const SizedBox.shrink();
+                        }
+                        
+                        final criteriaData = snapshot.data;
+                        if (criteriaData == null || criteriaData.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text('Caractéristiques', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                             const SizedBox(height: 8),
-                            ...criterias.entries.map((e) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                  child: Row(
-                                    children: [
-                                      Text('${e.key} : ', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                      Flexible(child: Text('${e.value}', style: const TextStyle(fontWeight: FontWeight.normal))),
-                                    ],
+                            ...criteriaData.entries.map((entry) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      '${entry.key} : ',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                    ),
                                   ),
-                                )),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      '${entry.value}',
+                                      style: const TextStyle(fontWeight: FontWeight.normal, fontSize: 14),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )),
                             const Divider(height: 32, thickness: 1, color: Color(0xFFE0E0E0)),
                           ],
                         );
@@ -2319,6 +2414,10 @@ class ProductListScreen extends StatefulWidget {
 class _ProductListScreenState extends State<ProductListScreen> {
   List<Ad> _products = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  int _currentPage = 0;
+  static const int _pageSize = 10;
 
   @override
   void initState() {
@@ -2326,7 +2425,20 @@ class _ProductListScreenState extends State<ProductListScreen> {
     _loadProducts();
   }
 
-  Future<void> _loadProducts() async {
+  Future<void> _loadProducts({bool loadMore = false}) async {
+    if (loadMore) {
+      setState(() {
+        _loadingMore = true;
+      });
+    } else {
+      setState(() {
+        _loading = true;
+        _currentPage = 0;
+        _products.clear();
+        _hasMore = true;
+      });
+    }
+
     try {
       final databases = AppwriteService().databases;
       final result = await databases.listDocuments(
@@ -2336,16 +2448,36 @@ class _ProductListScreenState extends State<ProductListScreen> {
           appw.Query.equal('isActive', true),
           appw.Query.equal('subCategoryId', widget.subCategoryId),
           appw.Query.orderDesc('publicationDate'),
+          appw.Query.limit(_pageSize),
+          if (loadMore && _products.isNotEmpty)
+            appw.Query.cursorAfter(_products.last.id),
         ],
       );
+
+      final newProducts = result.documents.map((doc) => Ad.fromAppwrite(doc)).toList();
+      
       setState(() {
-        _products = result.documents.map((doc) => Ad.fromAppwrite(doc)).toList();
+        if (loadMore) {
+          _products.addAll(newProducts);
+        } else {
+          _products = newProducts;
+        }
+        _hasMore = newProducts.length == _pageSize;
+        _currentPage++;
         _loading = false;
+        _loadingMore = false;
       });
     } catch (e) {
       setState(() {
         _loading = false;
+        _loadingMore = false;
       });
+    }
+  }
+
+  Future<void> _loadMoreProducts() async {
+    if (!_loadingMore && _hasMore) {
+      await _loadProducts(loadMore: true);
     }
   }
 
@@ -2363,43 +2495,74 @@ class _ProductListScreenState extends State<ProductListScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _products.isEmpty
               ? const Center(child: Text('Aucun produit dans cette catégorie'))
-              : GridView.builder(
-                  padding: const EdgeInsets.all(16),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: MediaQuery.of(context).size.width > 600 ? 1.0 : 0.7,
-                  ),
-                  itemCount: _products.length,
-                  itemBuilder: (context, index) {
-                    final product = _products[index];
-                    return AdCard(
-                      ad: product,
-                      index: index,
-                      categoryLabels: widget.categoryLabels,
-                      onFavoriteChanged: () {
-                        // Optionnel : on pourrait ajouter une notification ici
-                      },
-                      onTap: () {
-                        if (Platform.isIOS) {
-                          Navigator.of(context).push(
-                            CupertinoPageRoute(
-                              builder: (context) => ProductDetailPage(ad: product, categoryLabels: widget.categoryLabels),
-                              fullscreenDialog: true,
-                            ),
-                          );
-                        } else {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => ProductDetailPage(ad: product, categoryLabels: widget.categoryLabels),
-                              fullscreenDialog: true,
-                            ),
-                          );
-                        }
-                      },
-                    );
+              : NotificationListener<ScrollNotification>(
+                  onNotification: (ScrollNotification scrollInfo) {
+                    if (scrollInfo.metrics.pixels == scrollInfo.metrics.maxScrollExtent) {
+                      _loadMoreProducts();
+                    }
+                    return true;
                   },
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: GridView.builder(
+                          padding: const EdgeInsets.all(16),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: MediaQuery.of(context).size.width > 600 ? 1.0 : 0.7,
+                          ),
+                          itemCount: _products.length,
+                          itemBuilder: (context, index) {
+                            final product = _products[index];
+                            return AdCard(
+                              ad: product,
+                              index: index,
+                              categoryLabels: widget.categoryLabels,
+                              onFavoriteChanged: () {
+                                // Optionnel : on pourrait ajouter une notification ici
+                              },
+                              onTap: () {
+                                if (Platform.isIOS) {
+                                  Navigator.of(context).push(
+                                    CupertinoPageRoute(
+                                      builder: (context) => ProductDetailPage(ad: product, categoryLabels: widget.categoryLabels),
+                                      fullscreenDialog: true,
+                                    ),
+                                  );
+                                } else {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => ProductDetailPage(ad: product, categoryLabels: widget.categoryLabels),
+                                      fullscreenDialog: true,
+                                    ),
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                      // Indicateur de chargement en bas
+                      if (_loadingMore)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              SizedBox(width: 8),
+                              Text('Chargement...'),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
     );
   }

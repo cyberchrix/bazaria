@@ -58,8 +58,11 @@ class _AdCardState extends State<AdCard> {
   Widget build(BuildContext context) {
     final ad = widget.ad;
     final labels = widget.categoryLabels;
-    logger.d('Annonce ${ad.id}: subCategoryId = ${ad.subCategoryId}, labels disponibles = ${labels.keys.toList()}');
-    logger.d('Label trouvé pour ${ad.subCategoryId}: ${labels[ad.subCategoryId]}');
+    
+    // Utiliser subCategoryId ou mainCategoryId comme fallback
+    final categoryId = ad.subCategoryId.isNotEmpty ? ad.subCategoryId : ad.mainCategoryId;
+    logger.d('Annonce ${ad.id}: subCategoryId = ${ad.subCategoryId}, mainCategoryId = ${ad.mainCategoryId}, categoryId utilisé = $categoryId');
+    logger.d('Label trouvé pour $categoryId: ${labels[categoryId]}');
     
     return GestureDetector(
       onTap: widget.onTap,
@@ -82,34 +85,35 @@ class _AdCardState extends State<AdCard> {
             // Product image with favorite icon
             Stack(
               children: [
-                ClipRRect(
+                                ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    ad.imageUrl,
-                    height: 120,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        height: 120,
-                        width: double.infinity,
-                        color: Colors.grey.shade200,
-                        child: const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 32,
-                                height: 32,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            ],
+                  child: AspectRatio(
+                    aspectRatio: 3/2, // Ratio original des images 1536x1024
+                    child: Image.network(
+                      ad.imageUrl,
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          color: Colors.grey.shade200,
+                          child: const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) => _imagePlaceholder(),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) => _imagePlaceholder(),
+                    ),
                   ),
                 ),
                 Positioned(
@@ -168,7 +172,7 @@ class _AdCardState extends State<AdCard> {
                   ),
                   const SizedBox(height: 1),
                   Text(
-                    labels[ad.subCategoryId]?['name'] ?? 'Catégorie: ${ad.subCategoryId}',
+                    (labels[categoryId])?['name'] ?? 'Catégorie: $categoryId',
                     style: TextStyle(fontSize: 10, color: AppTheme.primaryColor, fontWeight: FontWeight.w600),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

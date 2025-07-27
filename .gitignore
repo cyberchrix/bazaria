@@ -5,9 +5,11 @@
 *.swp
 .DS_Store
 .atom/
+.build/
 .buildlog/
 .history
 .svn/
+.swiftpm/
 migrate_working_dir/
 
 # IntelliJ related
@@ -99,6 +101,9 @@ appwrite.json
 
 # Firebase service account
 scripts/firebase-service-account.json
+
+# Scripts directory (contains API keys and sensitive data)
+scripts/
 
 # Logs
 *.log

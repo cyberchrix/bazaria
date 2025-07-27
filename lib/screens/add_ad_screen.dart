@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/category_service.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:logger/logger.dart';
 import 'package:appwrite/appwrite.dart';
 import '../services/appwrite_service.dart';
 import '../widgets/city_selector.dart';
 import '../services/location_service.dart';
+import '../widgets/criteria_form.dart';
+import '../services/criteria_service.dart';
+import 'criteria_screen.dart';
 final logger = Logger();
 
 class AddAdScreen extends StatefulWidget {
@@ -31,6 +35,10 @@ class _AddAdScreenState extends State<AddAdScreen> {
   // Coordonnées GPS
   double? _latitude;
   double? _longitude;
+  
+  // Critères dynamiques
+  Map<String, dynamic> _criteriaValues = {};
+  List<String> _criteriaErrors = [];
   
   // Controllers pour les champs de texte
   final TextEditingController _productNameController = TextEditingController();
@@ -97,6 +105,52 @@ class _AddAdScreenState extends State<AddAdScreen> {
     setState(() {
       if (_step > 0) _step--;
     });
+  }
+
+  void _onCriteriaValuesChanged(Map<String, dynamic> values) {
+    setState(() {
+      _criteriaValues.clear();
+      _criteriaValues.addAll(values);
+    });
+  }
+
+  void _openCriteriaScreen() async {
+    if (_subCategoryId == null) return;
+    
+    logger.d('🔍 Ouverture du formulaire de critères pour subCategoryId: $_subCategoryId');
+    
+    // Récupérer le nom de la sous-catégorie
+    final subCategory = _categoryLabels.entries
+        .firstWhere((e) => e.value['\$id'] == _subCategoryId, 
+                   orElse: () => MapEntry('', {'name': 'Catégorie'}));
+    final categoryName = subCategory.value['name'] ?? 'Catégorie';
+    
+    logger.d('📱 Nom de la catégorie: $categoryName');
+
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => CriteriaScreen(
+          categoryId: _subCategoryId!,
+          categoryName: categoryName,
+          initialValues: _criteriaValues,
+          onCriteriaSaved: (values) {
+            setState(() {
+              _criteriaValues = values;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  bool _validateCriteria() {
+    if (_subCategoryId == null) return true; // Pas de validation si pas de sous-catégorie
+    
+    final errors = CriteriaService.validateCriteriaValues(_criteriaValues, []);
+    setState(() {
+      _criteriaErrors = errors;
+    });
+    return errors.isEmpty;
   }
 
   Future<void> _showImageSourceDialog() async {
@@ -311,6 +365,95 @@ class _AddAdScreenState extends State<AddAdScreen> {
           onChanged: (val) => setState(() => _subCategoryId = val),
         ),
         const SizedBox(height: 24),
+        
+        // Bouton pour ouvrir l'écran des critères
+        if (_subCategoryId != null) ...[
+          const Divider(height: 32),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF15A22).withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFFF15A22).withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.tune,
+                  color: const Color(0xFFF15A22),
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Caractéristiques spécifiques',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Ajoutez des détails pour mieux décrire votre annonce',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      if (_criteriaValues.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '${_criteriaValues.length} caractéristique${_criteriaValues.length > 1 ? 's' : ''} définie${_criteriaValues.length > 1 ? 's' : ''}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFFF15A22),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.grey[400],
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFF15A22)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () => _openCriteriaScreen(),
+              child: Text(
+                _criteriaValues.isEmpty 
+                    ? 'Définir les caractéristiques'
+                    : 'Modifier les caractéristiques',
+                style: const TextStyle(
+                  color: Color(0xFFF15A22),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+        
         Row(
           children: [
             const Spacer(),
@@ -682,6 +825,8 @@ class _AddAdScreenState extends State<AddAdScreen> {
 
 
 
+
+
   Future<List<String>> _uploadAllPhotosToAppwrite() async {
     List<String> imageUrls = [];
     
@@ -719,6 +864,16 @@ class _AddAdScreenState extends State<AddAdScreen> {
       if (_photos.isNotEmpty) {
         imageUrls = await _uploadAllPhotosToAppwrite();
       }
+      // Convertir les critères au format attendu par Appwrite
+      String criteriasJson = '[]';
+      if (_criteriaValues.isNotEmpty) {
+        final criteriasList = _criteriaValues.entries.map((entry) => {
+          'id_criteria': entry.key,
+          'value': entry.value,
+        }).toList();
+        criteriasJson = jsonEncode(criteriasList);
+      }
+
       final adData = {
         'title': _productName ?? '',
         'price': _price ?? 0.0,
@@ -735,6 +890,8 @@ class _AddAdScreenState extends State<AddAdScreen> {
         // Coordonnées GPS (optionnelles pour compatibilité)
         if (_latitude != null) 'latitude': _latitude,
         if (_longitude != null) 'longitude': _longitude,
+        // Critères dynamiques
+        'criterias': criteriasJson,
       };
 
       await databases.createDocument(
@@ -762,7 +919,7 @@ class _AddAdScreenState extends State<AddAdScreen> {
   }
 
   Widget _buildProgressIndicator() {
-    const totalSteps = 6;
+    const totalSteps = 6; // Retour à 6 étapes
     final progress = (_step + 0.2) / totalSteps; // Commence avec un petit pourcentage pour la première étape
     
     return Column(
