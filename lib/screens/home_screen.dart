@@ -956,8 +956,18 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   double _appBarOpacity = 0.0;
   int _currentImageIndex = 0;
   final PageController _imagePageController = PageController();
+  
+  // Cache pour les critères
+  Map<String, Map<String, dynamic>>? _cachedCriteriaData;
+  bool _isLoadingCriteria = true;
 
-  Future<Map<String, dynamic>> _loadCriteriaData() async {
+  @override
+  void initState() {
+    super.initState();
+    _loadCriteriaData();
+  }
+
+  Future<void> _loadCriteriaData() async {
     try {
       logger.d('🔍 Début _loadCriteriaData pour annonce: ${widget.ad.title}');
       logger.d('🔍 Criterias bruts: ${widget.ad.criterias}');
@@ -975,13 +985,21 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           logger.d('✅ Critères parsés: $criteriaList');
         } catch (e) {
           logger.e('❌ Erreur parsing critères: $e');
-          return {};
+          setState(() {
+            _cachedCriteriaData = {};
+            _isLoadingCriteria = false;
+          });
+          return;
         }
       }
       
       if (criteriaList.isEmpty) {
         logger.w('⚠️ Aucun critère trouvé dans l\'annonce');
-        return {};
+        setState(() {
+          _cachedCriteriaData = {};
+          _isLoadingCriteria = false;
+        });
+        return;
       }
       
       // Extraire les IDs des critères
@@ -996,16 +1014,26 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       // Si aucun label trouvé par ID, essayer de faire correspondre par les valeurs
       if (labels.isEmpty) {
         logger.d('🔍 Aucun label trouvé par ID, tentative de correspondance par valeurs...');
-        return await _matchCriteriaByValues(criteriaList);
+        final result = await _matchCriteriaByValues(criteriaList);
+        setState(() {
+          _cachedCriteriaData = result;
+          _isLoadingCriteria = false;
+        });
+        return;
       }
       
+      // Récupérer les critères complets depuis la base de données pour avoir les unités
+      logger.d('🔍 Récupération des critères complets pour les unités...');
+      final allCriteria = await CriteriaService.getAllCriteria();
+      final criteriaMap = {for (var c in allCriteria) c.id: c};
+      
       // Créer le map final avec labels (en évitant les doublons)
-      Map<String, dynamic> criteriaWithLabels = {};
+      Map<String, Map<String, dynamic>> criteriaWithLabels = {};
       Set<String> seenValues = {}; // Pour détecter les doublons de valeurs
       
       for (Map<String, dynamic> criteria in criteriaList) {
         final criteriaId = criteria['id_criteria'] as String;
-        final value = criteria['value'] as String;
+        final value = criteria['value']?.toString() ?? '';
         
         // Vérifier si on a un label valide pour ce critère
         final label = labels[criteriaId];
@@ -1022,22 +1050,35 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           continue;
         }
         
-        // Ajouter le critère avec son label
-        criteriaWithLabels[label] = value;
+        // Récupérer le critère complet depuis la base de données pour avoir l'unité
+        final criterion = criteriaMap[criteriaId];
+        final unit = criterion?.unit;
+        
+        // Ajouter le critère avec son label et son unité
+        criteriaWithLabels[label] = {
+          'value': value,
+          'unit': unit,
+        };
         seenValues.add(value);
-        logger.d('✅ Critère ajouté: $criteriaId -> $label = $value');
+        logger.d('✅ Critère ajouté: $criteriaId -> $label = $value (unité: $unit)');
       }
       
       logger.d('✅ Critères finaux: $criteriaWithLabels');
-      return criteriaWithLabels;
+      setState(() {
+        _cachedCriteriaData = criteriaWithLabels;
+        _isLoadingCriteria = false;
+      });
     } catch (e) {
       logger.e('❌ Erreur chargement critères: $e');
-      return {};
+      setState(() {
+        _cachedCriteriaData = {};
+        _isLoadingCriteria = false;
+      });
     }
   }
 
   /// Méthode pour faire correspondre les critères par leurs valeurs
-  Future<Map<String, dynamic>> _matchCriteriaByValues(List<Map<String, dynamic>> criteriaList) async {
+  Future<Map<String, Map<String, dynamic>>> _matchCriteriaByValues(List<Map<String, dynamic>> criteriaList) async {
     try {
       logger.d('🔍 Début _matchCriteriaByValues');
       
@@ -1045,11 +1086,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       final allCriteria = await CriteriaService.getAllCriteria();
       logger.d('📋 ${allCriteria.length} critères récupérés de la base de données');
       
-      Map<String, dynamic> criteriaWithLabels = {};
+      Map<String, Map<String, dynamic>> criteriaWithLabels = {};
       Set<String> seenValues = {};
       
       for (Map<String, dynamic> criteria in criteriaList) {
-        final value = criteria['value'] as String;
+        final value = criteria['value']?.toString() ?? '';
         
         // Éviter les doublons
         if (seenValues.contains(value)) {
@@ -1058,11 +1099,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         
         // Chercher un critère qui contient cette valeur dans ses options
         String? foundLabel;
+        dynamic foundCriterion;
+        
+        // Première passe : chercher par correspondance exacte dans les options
         for (final criterion in allCriteria) {
           if (criterion.options != null) {
             // Correspondance exacte
             if (criterion.options!.contains(value)) {
               foundLabel = criterion.label;
+              foundCriterion = criterion;
               logger.d('✅ Correspondance exacte trouvée: $value -> $foundLabel');
               break;
             }
@@ -1072,6 +1117,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               if (option.toLowerCase().contains(value.toLowerCase()) || 
                   value.toLowerCase().contains(option.toLowerCase())) {
                 foundLabel = criterion.label;
+                foundCriterion = criterion;
                 logger.d('✅ Correspondance partielle trouvée: $value ~ $option -> $foundLabel');
                 break;
               }
@@ -1081,25 +1127,82 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           }
         }
         
+        // Deuxième passe : si c'est un nombre, chercher des critères numériques par leur label
+        if (foundLabel == null && double.tryParse(value) != null) {
+          logger.d('🔍 Valeur numérique détectée: $value, recherche par label...');
+          for (final criterion in allCriteria) {
+            final labelLower = criterion.label.toLowerCase();
+            logger.d('🔍 Vérification critère: ${criterion.label} (unité: ${criterion.unit})');
+            if (labelLower.contains('surface') || labelLower.contains('superficie') ||
+                labelLower.contains('taille') || labelLower.contains('poids') ||
+                labelLower.contains('hauteur') || labelLower.contains('largeur') ||
+                labelLower.contains('profondeur') || labelLower.contains('capacité')) {
+              foundLabel = criterion.label;
+              foundCriterion = criterion;
+              logger.d('✅ Critère numérique trouvé par label: $value -> $foundLabel (unité: ${criterion.unit})');
+              break;
+            }
+          }
+        }
+        
         // Si on a trouvé un label, l'ajouter
         if (foundLabel != null && foundLabel.isNotEmpty) {
-          criteriaWithLabels[foundLabel] = value;
+          criteriaWithLabels[foundLabel] = {
+            'value': value,
+            'unit': foundCriterion?.unit,
+          };
           seenValues.add(value);
-          logger.d('✅ Critère ajouté par valeur: $foundLabel = $value');
+          logger.d('✅ Critère ajouté par valeur: $foundLabel = $value (unité: ${foundCriterion?.unit})');
         } else {
           // Si aucune correspondance trouvée, essayer de deviner le label basé sur la valeur
           final guessedLabel = _guessLabelFromValue(value);
           if (guessedLabel != null) {
-            criteriaWithLabels[guessedLabel] = value;
+            // Essayer d'abord de deviner l'unité basée sur le label
+            String? guessedUnit = _guessUnitFromLabel(guessedLabel);
+            
+            // Si pas d'unité trouvée, essayer de deviner basé sur la valeur numérique
+            guessedUnit ??= _guessUnitFromNumericValue(value, guessedLabel);
+            
+            criteriaWithLabels[guessedLabel] = {
+              'value': value,
+              'unit': guessedUnit,
+            };
             seenValues.add(value);
-            logger.d('✅ Critère ajouté par devinette: $guessedLabel = $value');
+            logger.d('✅ Critère ajouté par devinette: $guessedLabel = $value (unité: $guessedUnit)');
           } else {
-            logger.d('⚠️ Aucune correspondance trouvée pour: $value');
+            // Fallback : si c'est un nombre entre 10 et 1000, on suppose que c'est une surface
+            if (double.tryParse(value) != null) {
+              final numValue = double.parse(value);
+              if (numValue >= 10 && numValue <= 1000) {
+                logger.d('🔍 Valeur numérique dans la plage surface détectée: $value');
+                // Chercher si on a déjà un critère "Surface" dans les résultats
+                bool hasSurface = criteriaWithLabels.keys.any((key) => key.toLowerCase().contains('surface'));
+                if (!hasSurface) {
+                  criteriaWithLabels['Surface'] = {
+                    'value': value,
+                    'unit': 'm²',
+                  };
+                  seenValues.add(value);
+                  logger.d('✅ Surface ajoutée par fallback: $value m²');
+                }
+              } else {
+                logger.d('⚠️ Valeur numérique hors plage: $value');
+              }
+            } else {
+              logger.d('⚠️ Aucune correspondance trouvée pour: $value');
+            }
           }
         }
       }
       
       logger.d('✅ Critères finaux par correspondance de valeurs: $criteriaWithLabels');
+      
+      // Debug détaillé des critères avec leurs unités
+      for (final entry in criteriaWithLabels.entries) {
+        final unit = entry.value['unit'];
+        logger.d('📋 Critère final: ${entry.key} = ${entry.value['value']} (unité: $unit)');
+      }
+      
       return criteriaWithLabels;
     } catch (e) {
       logger.e('❌ Erreur dans _matchCriteriaByValues: $e');
@@ -1134,6 +1237,67 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     if (valueLower.contains('bon état') || valueLower.contains('excellent') || valueLower.contains('neuf') ||
         valueLower.contains('moyen') || valueLower.contains('mauvais')) {
       return 'État';
+    }
+    
+    // Si c'est un nombre, on ne peut pas deviner le label sans plus de contexte
+    // On retourne null pour que le système essaie de trouver une correspondance dans la base de données
+    return null;
+  }
+
+  /// Devine l'unité basée sur le label
+  String? _guessUnitFromLabel(String label) {
+    final labelLower = label.toLowerCase();
+    
+    if (labelLower.contains('surface') || labelLower.contains('superficie')) {
+      return 'm²';
+    }
+    if (labelLower.contains('capacité') || labelLower.contains('stockage')) {
+      return 'GB';
+    }
+    if (labelLower.contains('poids') || labelLower.contains('masse')) {
+      return 'kg';
+    }
+    if (labelLower.contains('taille') || labelLower.contains('écran')) {
+      return 'pouces';
+    }
+    if (labelLower.contains('hauteur') || labelLower.contains('largeur') || labelLower.contains('profondeur')) {
+      return 'cm';
+    }
+    if (labelLower.contains('prix') || labelLower.contains('coût')) {
+      return '€';
+    }
+    
+    return null;
+  }
+
+  /// Devine l'unité basée sur la valeur numérique
+  String? _guessUnitFromNumericValue(String value, String label) {
+    final labelLower = label.toLowerCase();
+    final valueLower = value.toLowerCase();
+    
+    // Si c'est un nombre et que le label contient "surface"
+    if (labelLower.contains('surface') || labelLower.contains('superficie')) {
+      return 'm²';
+    }
+    
+    // Si c'est un nombre et que le label contient "capacité"
+    if (labelLower.contains('capacité') || labelLower.contains('stockage')) {
+      return 'GB';
+    }
+    
+    // Si c'est un nombre et que le label contient "poids"
+    if (labelLower.contains('poids') || labelLower.contains('masse')) {
+      return 'kg';
+    }
+    
+    // Si c'est un nombre et que le label contient "taille"
+    if (labelLower.contains('taille') || labelLower.contains('écran')) {
+      return 'pouces';
+    }
+    
+    // Si c'est un nombre et que le label contient "hauteur", "largeur", "profondeur"
+    if (labelLower.contains('hauteur') || labelLower.contains('largeur') || labelLower.contains('profondeur')) {
+      return 'cm';
     }
     
     return null;
@@ -1316,32 +1480,47 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                     const SizedBox(height: 8),
                     // Critères et description
-                    FutureBuilder<Map<String, dynamic>>(
-                      future: _loadCriteriaData(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                            child: Center(child: CircularProgressIndicator()),
-                          );
-                        }
-                        
-                        if (snapshot.hasError) {
-                          return const SizedBox.shrink();
-                        }
-                        
-                        final criteriaData = snapshot.data;
-                        if (criteriaData == null || criteriaData.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
-                        
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Divider(height: 32, thickness: 1, color: Color(0xFFE0E0E0)),
-                            const Text('Caractéristiques', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            const SizedBox(height: 8),
-                            ...criteriaData.entries.map((entry) => Padding(
+                    if (_isLoadingCriteria)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (_cachedCriteriaData != null && _cachedCriteriaData!.isNotEmpty)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Divider(height: 32, thickness: 1, color: Color(0xFFE0E0E0)),
+                          const Text('Caractéristiques', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          const SizedBox(height: 8),
+                          ..._cachedCriteriaData!.entries.map((entry) {
+                            // Debug de la structure des données
+                            logger.d('🔍 Structure entry.value: ${entry.value} (type: ${entry.value.runtimeType})');
+                            
+                            final value = entry.value is Map ? entry.value['value'] : entry.value;
+                            final unit = entry.value is Map ? entry.value['unit'] : null;
+                            
+                            // Vérifier si l'unité est déjà présente dans la valeur
+                            String displayValue;
+                            if (unit != null && unit.toString().isNotEmpty) {
+                              final valueLower = value.toString().toLowerCase();
+                              final unitLower = unit.toString().toLowerCase();
+                              
+                              // Vérifier si l'unité est déjà dans la valeur
+                              if (valueLower.contains(unitLower)) {
+                                displayValue = value.toString();
+                                logger.d('🔍 Unité déjà présente dans la valeur: $value (unité: $unit)');
+                              } else {
+                                displayValue = '$value $unit';
+                                logger.d('🔍 Unité ajoutée: $value + $unit');
+                              }
+                            } else {
+                              displayValue = value.toString();
+                            }
+                            
+                            // Debug pour tracer les unités
+                            logger.d('🔍 Affichage critère: ${entry.key} = $value (unité: $unit, type: ${unit.runtimeType}) -> $displayValue');
+                            
+                            return Padding(
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1356,18 +1535,17 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                   Expanded(
                                     flex: 2,
                                     child: Text(
-                                      '${entry.value}',
+                                      displayValue,
                                       style: const TextStyle(fontWeight: FontWeight.normal, fontSize: 14),
                                     ),
                                   ),
                                 ],
                               ),
-                            )),
-                            const Divider(height: 32, thickness: 1, color: Color(0xFFE0E0E0)),
-                          ],
-                        );
-                      },
-                    ),
+                            );
+                          }),
+                          const Divider(height: 32, thickness: 1, color: Color(0xFFE0E0E0)),
+                        ],
+                      ),
                     const Text('Description', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 8),
                     Align(
@@ -1701,11 +1879,11 @@ class _AdCarouselState extends State<_AdCarousel> {
         _startProgressTimer();
       } else {
         print('⚠️ Aucune publicité trouvée, utilisation du fallback local');
-        _useLocalFallback();
+        // _useLocalFallback();
       }
     } catch (e) {
       print('❌ Erreur lors du chargement des publicités: $e');
-      _useLocalFallback();
+      // _useLocalFallback();
     }
   }
 
@@ -1719,19 +1897,19 @@ class _AdCarouselState extends State<_AdCarousel> {
     }
   }
 
-  void _useLocalFallback() {
-    setState(() {
-      _isLoading = false;
-      // Fallback vers les données locales si erreur
-      _adsData = [
-        {'image': 'assets/ads/pub_bazaria_1.png', 'url': 'https://bazaria.fr'},
-        {'image': 'assets/ads/pub_bazaria_2.png', 'url': 'https://bazaria.fr'},
-        {'image': 'assets/ads/pub_bazaria_3.png', 'url': 'https://bazaria.fr'},
-      ];
-    });
-    _startAutoScroll();
-    _startProgressTimer();
-  }
+  // void _useLocalFallback() {
+  //   setState(() {
+  //     _isLoading = false;
+  //     // Fallback vers les données locales si erreur
+  //     _adsData = [
+  //       {'image': 'assets/ads/pub_bazaria_1.png', 'url': 'https://bazaria.fr'},
+  //       {'image': 'assets/ads/pub_bazaria_2.png', 'url': 'https://bazaria.fr'},
+  //       {'image': 'assets/ads/pub_bazaria_3.png', 'url': 'https://bazaria.fr'},
+  //     ];
+  //   });
+  //   _startAutoScroll();
+  //   _startProgressTimer();
+  // }
 
   void _startAutoScroll() {
     _adAutoScrollTimer = Timer.periodic(const Duration(seconds: _autoScrollDuration), (timer) {
