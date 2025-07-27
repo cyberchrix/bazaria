@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../services/image_search_service.dart';
-import '../widgets/ad_card.dart';
-import '../models/ad.dart';
 import 'package:logger/logger.dart';
 
 final logger = Logger();

@@ -1,5 +1,4 @@
 import 'package:appwrite/appwrite.dart';
-import 'package:appwrite/models.dart';
 import '../models/ad.dart';
 import 'appwrite_service.dart';
 

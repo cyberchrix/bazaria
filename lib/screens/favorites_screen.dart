@@ -6,7 +6,6 @@ import '../services/favorites_service.dart';
 import '../services/saved_searches_service.dart';
 import '../widgets/ad_card.dart';
 import 'search_screen.dart';
-import 'package:logger/logger.dart';
 import 'dart:io' show Platform;
 import 'package:flutter/cupertino.dart';
 import 'home_screen.dart' as home;

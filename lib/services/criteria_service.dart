@@ -412,9 +412,9 @@ class CriteriaService {
       final allCriteria = await getAllCriteria();
       logger.d('📋 ${allCriteria.length} critères récupérés au total');
       
-      // Debug: afficher tous les critères
+      // Debug: afficher tous les critères avec plus de détails
       for (final criterion in allCriteria) {
-        logger.d('📋 Critère disponible: ID=${criterion.id}, Label=${criterion.label}');
+        logger.d('📋 Critère disponible: ID=${criterion.id}, Label=${criterion.label}, CategoryId=${criterion.dependsOn}');
       }
 
       // Créer un map des labels par ID
@@ -423,8 +423,33 @@ class CriteriaService {
       // Première passe : correspondance exacte par ID
       for (final criterion in allCriteria) {
         if (criteriaIds.contains(criterion.id)) {
-          labels[criterion.id] = criterion.label;
-          logger.d('✅ Label trouvé par ID: ${criterion.id} -> ${criterion.label}');
+          // Vérifier que le label n'est pas vide
+          if (criterion.label.isNotEmpty) {
+            labels[criterion.id] = criterion.label;
+            logger.d('✅ Label trouvé par ID: ${criterion.id} -> ${criterion.label}');
+          } else {
+            logger.w('⚠️ Critère avec label vide ignoré: ${criterion.id}');
+          }
+        }
+      }
+      
+      // Vérifier les IDs non trouvés
+      final notFoundIds = criteriaIds.where((id) => !labels.containsKey(id)).toList();
+      if (notFoundIds.isNotEmpty) {
+        logger.w('⚠️ IDs non trouvés: $notFoundIds');
+        
+        // Essayer de trouver une correspondance par les options des critères
+        logger.d('🔍 Tentative de correspondance par les valeurs...');
+        for (final criterion in allCriteria) {
+          if (criterion.options != null) {
+            for (final option in criterion.options!) {
+              // Chercher si une des valeurs des critères correspond à une option
+              for (final criteriaId in notFoundIds) {
+                // Ici on devrait avoir accès à la valeur, mais on ne l'a pas dans cette méthode
+                // On va essayer une approche différente
+              }
+            }
+          }
         }
       }
       

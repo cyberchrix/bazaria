@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../screens/search_screen.dart';
 import 'package:badges/badges.dart' as badges;
-import '../services/category_service.dart';
 import '../screens/profile_screen.dart';
 import '../screens/messages_screen.dart';
 import '../screens/favorites_screen.dart';
@@ -24,11 +23,10 @@ import 'package:flutter/foundation.dart';
 import '../services/notification_service.dart';
 import '../services/favorites_service.dart';
 import '../services/criteria_service.dart';
-import '../models/criterion.dart';
 import '../widgets/ad_card.dart';
+import '../widgets/performance_test_widget.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:http/http.dart' as http;
 
 final logger = Logger();
 
@@ -855,6 +853,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       body: (!_isConnected || _isCheckingConnection)
           ? _buildNoConnectionView()
           : views[_selectedIndex],
+      floatingActionButton: kDebugMode
+          ? FloatingActionButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const PerformanceTestWidget(),
+                  ),
+                );
+              },
+              backgroundColor: Colors.blue,
+              child: const Icon(Icons.speed, color: Colors.white),
+            )
+          : null,
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         items: <BottomNavigationBarItem>[
@@ -982,6 +993,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       final labels = await CriteriaService.getCriteriaLabels(criteriaIds);
       logger.d('📋 Labels récupérés: $labels');
       
+      // Si aucun label trouvé par ID, essayer de faire correspondre par les valeurs
+      if (labels.isEmpty) {
+        logger.d('🔍 Aucun label trouvé par ID, tentative de correspondance par valeurs...');
+        return await _matchCriteriaByValues(criteriaList);
+      }
+      
       // Créer le map final avec labels (en évitant les doublons)
       Map<String, dynamic> criteriaWithLabels = {};
       Set<String> seenValues = {}; // Pour détecter les doublons de valeurs
@@ -989,25 +1006,26 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       for (Map<String, dynamic> criteria in criteriaList) {
         final criteriaId = criteria['id_criteria'] as String;
         final value = criteria['value'] as String;
-        final label = labels[criteriaId] ?? criteriaId;
         
-        // Éviter les doublons : si on a déjà vu cette valeur avec un label correct, on ignore
-        if (seenValues.contains(value) && (labels[criteriaId] == null || labels[criteriaId] == criteriaId)) {
-          logger.d('🔄 Doublon ignoré: $criteriaId -> $label = $value (déjà présent)');
+        // Vérifier si on a un label valide pour ce critère
+        final label = labels[criteriaId];
+        
+        // Si on n'a pas de label valide, on ignore ce critère
+        if (label == null || label.isEmpty || label == criteriaId) {
+          logger.d('⚠️ Critère ignoré (pas de label valide): $criteriaId -> $value');
           continue;
         }
         
-        // Si on a un label correct, on remplace l'ancien
-        if (labels[criteriaId] != null && labels[criteriaId] != criteriaId) {
-          criteriaWithLabels[label] = value;
-          seenValues.add(value);
-          logger.d('✅ Critère ajouté: $criteriaId -> $label = $value');
-        } else if (labels[criteriaId] == null && !seenValues.contains(value)) {
-          // Si pas de label trouvé mais valeur unique, on garde
-          criteriaWithLabels[label] = value;
-          seenValues.add(value);
-          logger.d('⚠️ Critère sans label: $criteriaId -> $label = $value');
+        // Éviter les doublons de valeurs
+        if (seenValues.contains(value)) {
+          logger.d('🔄 Doublon ignoré: $label = $value (déjà présent)');
+          continue;
         }
+        
+        // Ajouter le critère avec son label
+        criteriaWithLabels[label] = value;
+        seenValues.add(value);
+        logger.d('✅ Critère ajouté: $criteriaId -> $label = $value');
       }
       
       logger.d('✅ Critères finaux: $criteriaWithLabels');
@@ -1016,6 +1034,109 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       logger.e('❌ Erreur chargement critères: $e');
       return {};
     }
+  }
+
+  /// Méthode pour faire correspondre les critères par leurs valeurs
+  Future<Map<String, dynamic>> _matchCriteriaByValues(List<Map<String, dynamic>> criteriaList) async {
+    try {
+      logger.d('🔍 Début _matchCriteriaByValues');
+      
+      // Récupérer tous les critères de la base de données
+      final allCriteria = await CriteriaService.getAllCriteria();
+      logger.d('📋 ${allCriteria.length} critères récupérés de la base de données');
+      
+      Map<String, dynamic> criteriaWithLabels = {};
+      Set<String> seenValues = {};
+      
+      for (Map<String, dynamic> criteria in criteriaList) {
+        final value = criteria['value'] as String;
+        
+        // Éviter les doublons
+        if (seenValues.contains(value)) {
+          continue;
+        }
+        
+        // Chercher un critère qui contient cette valeur dans ses options
+        String? foundLabel;
+        for (final criterion in allCriteria) {
+          if (criterion.options != null) {
+            // Correspondance exacte
+            if (criterion.options!.contains(value)) {
+              foundLabel = criterion.label;
+              logger.d('✅ Correspondance exacte trouvée: $value -> $foundLabel');
+              break;
+            }
+            
+            // Correspondance partielle (insensible à la casse)
+            for (final option in criterion.options!) {
+              if (option.toLowerCase().contains(value.toLowerCase()) || 
+                  value.toLowerCase().contains(option.toLowerCase())) {
+                foundLabel = criterion.label;
+                logger.d('✅ Correspondance partielle trouvée: $value ~ $option -> $foundLabel');
+                break;
+              }
+            }
+            
+            if (foundLabel != null) break;
+          }
+        }
+        
+        // Si on a trouvé un label, l'ajouter
+        if (foundLabel != null && foundLabel.isNotEmpty) {
+          criteriaWithLabels[foundLabel] = value;
+          seenValues.add(value);
+          logger.d('✅ Critère ajouté par valeur: $foundLabel = $value');
+        } else {
+          // Si aucune correspondance trouvée, essayer de deviner le label basé sur la valeur
+          final guessedLabel = _guessLabelFromValue(value);
+          if (guessedLabel != null) {
+            criteriaWithLabels[guessedLabel] = value;
+            seenValues.add(value);
+            logger.d('✅ Critère ajouté par devinette: $guessedLabel = $value');
+          } else {
+            logger.d('⚠️ Aucune correspondance trouvée pour: $value');
+          }
+        }
+      }
+      
+      logger.d('✅ Critères finaux par correspondance de valeurs: $criteriaWithLabels');
+      return criteriaWithLabels;
+    } catch (e) {
+      logger.e('❌ Erreur dans _matchCriteriaByValues: $e');
+      return {};
+    }
+  }
+
+  /// Devine le label basé sur la valeur
+  String? _guessLabelFromValue(String value) {
+    final valueLower = value.toLowerCase();
+    
+    // Correspondances basées sur des mots-clés
+    if (valueLower.contains('gb') || valueLower.contains('go') || valueLower.contains('tb')) {
+      return 'Capacité';
+    }
+    if (valueLower.contains('blanc') || valueLower.contains('noir') || valueLower.contains('rouge') || 
+        valueLower.contains('bleu') || valueLower.contains('vert') || valueLower.contains('jaune') ||
+        valueLower.contains('orange') || valueLower.contains('violet') || valueLower.contains('rose')) {
+      return 'Couleur';
+    }
+    if (valueLower.contains('google') || valueLower.contains('apple') || valueLower.contains('samsung') ||
+        valueLower.contains('sony') || valueLower.contains('lg') || valueLower.contains('huawei')) {
+      return 'Marque';
+    }
+    if (valueLower.contains('pixel') || valueLower.contains('iphone') || valueLower.contains('galaxy') ||
+        valueLower.contains('oneplus') || valueLower.contains('xiaomi')) {
+      return 'Modèle';
+    }
+    if (valueLower.contains('android') || valueLower.contains('ios') || valueLower.contains('windows')) {
+      return 'Système d\'exploitation';
+    }
+    if (valueLower.contains('bon état') || valueLower.contains('excellent') || valueLower.contains('neuf') ||
+        valueLower.contains('moyen') || valueLower.contains('mauvais')) {
+      return 'État';
+    }
+    
+    return null;
   }
 
   @override
@@ -1193,7 +1314,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         );
                       },
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 8),
                     // Critères et description
                     FutureBuilder<Map<String, dynamic>>(
                       future: _loadCriteriaData(),
@@ -1217,6 +1338,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            const Divider(height: 32, thickness: 1, color: Color(0xFFE0E0E0)),
                             const Text('Caractéristiques', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                             const SizedBox(height: 8),
                             ...criteriaData.entries.map((entry) => Padding(
@@ -1225,14 +1347,14 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
-                                    flex: 2,
+                                    flex: 3,
                                     child: Text(
                                       '${entry.key} : ',
                                       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                                     ),
                                   ),
                                   Expanded(
-                                    flex: 3,
+                                    flex: 2,
                                     child: Text(
                                       '${entry.value}',
                                       style: const TextStyle(fontWeight: FontWeight.normal, fontSize: 14),

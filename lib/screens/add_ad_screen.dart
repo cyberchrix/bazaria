@@ -7,8 +7,6 @@ import 'package:logger/logger.dart';
 import 'package:appwrite/appwrite.dart';
 import '../services/appwrite_service.dart';
 import '../widgets/city_selector.dart';
-import '../services/location_service.dart';
-import '../widgets/criteria_form.dart';
 import '../services/criteria_service.dart';
 import 'criteria_screen.dart';
 final logger = Logger();

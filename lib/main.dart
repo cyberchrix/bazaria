@@ -9,6 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/notification_service.dart';
 import 'package:logger/logger.dart';
+import 'package:flutter/foundation.dart';
+import 'widgets/performance_test_widget.dart';
 
 final logger = Logger();
 
