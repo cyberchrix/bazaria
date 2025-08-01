@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 import 'theme/app_theme.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
+
 import 'package:rive/rive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/onboarding_screen.dart';
@@ -32,9 +31,7 @@ void main() async {
     logger.w('⚠️ Fichier .env non trouvé, utilisation des valeurs par défaut: $e');
   }
   
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+
   await initializeDateFormatting('fr_FR', null);
 
   runApp(const BazariaRoot());
