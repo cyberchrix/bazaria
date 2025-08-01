@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'package:logger/logger.dart';
+
+final logger = Logger();
 
 enum CriterionType {
   string,
@@ -36,18 +39,18 @@ class Criterion {
   });
 
   factory Criterion.fromJson(Map<String, dynamic> json) {
-    print('🔍 Parsing Criterion: ${json['label']}');
+    logger.d('🔍 Parsing Criterion: ${json['label']}');
     
     // Gestion des options (peut être un array ou une string JSON)
     List<String>? options;
     if (json['options'] != null) {
-      print('📋 Options type: ${json['options'].runtimeType}');
-      print('📋 Options value: ${json['options']}');
+      logger.d('📋 Options type: ${json['options'].runtimeType}');
+      logger.d('📋 Options value: ${json['options']}');
       
       if (json['options'] is List) {
         // Convertir List<dynamic> en List<String>
         options = (json['options'] as List).map((item) => item.toString()).toList();
-        print('📋 Options parsed: $options');
+        logger.d('📋 Options parsed: $options');
       } else if (json['options'] is String) {
         try {
           options = List<String>.from(jsonDecode(json['options']));
@@ -66,14 +69,14 @@ class Criterion {
       dependsOn: json['dependsOn'],
       conditionalOptions: json['conditionalOptions'] != null 
           ? (() {
-              print('📋 ConditionalOptions type: ${json['conditionalOptions'].runtimeType}');
-              print('📋 ConditionalOptions value: ${json['conditionalOptions']}');
+              logger.d('📋 ConditionalOptions type: ${json['conditionalOptions'].runtimeType}');
+              logger.d('📋 ConditionalOptions value: ${json['conditionalOptions']}');
               if (json['conditionalOptions'] is String) {
                 try {
                   final decodedMap = jsonDecode(json['conditionalOptions']) as Map<String, dynamic>;
                   return _parseConditionalOptions(decodedMap);
                 } catch (e) {
-                  print('❌ Erreur lors du décodage de conditionalOptions (string): $e');
+                  logger.e('❌ Erreur lors du décodage de conditionalOptions (string): $e');
                   return null;
                 }
               } else {

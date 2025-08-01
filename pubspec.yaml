@@ -54,6 +54,7 @@ dependencies:
   http: ^0.13.6
   dart_openai: ^3.0.0
   connectivity_plus: ^5.0.2
+  flutter_dotenv: ^5.1.0
   # Temporairement commenté pour résoudre le problème de compilation iOS
   # firebase_messaging: ^14.7.10
   # flutter_local_notifications: ^16.3.2
@@ -98,6 +99,7 @@ flutter:
     - assets/onboarding/onboarding_step_3.png
     - assets/onboarding/onboarding_step_4.png
     - assets/synonyms.json
+    - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

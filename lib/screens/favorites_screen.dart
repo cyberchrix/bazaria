@@ -9,6 +9,9 @@ import 'search_screen.dart';
 import 'dart:io' show Platform;
 import 'package:flutter/cupertino.dart';
 import 'home_screen.dart' as home;
+import 'package:logger/logger.dart';
+
+final logger = Logger();
 
 class FavoritesScreen extends StatefulWidget {
   final VoidCallback? onFavoritesChanged;
@@ -62,7 +65,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> with SingleTickerProv
         _categoryLabels = categories;
       });
     } catch (e) {
-      print('Erreur lors du chargement des catégories: $e');
+      logger.e('Erreur lors du chargement des catégories: $e');
     }
   }
 
@@ -105,7 +108,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> with SingleTickerProv
         _isLoading = false;
       });
     } catch (e) {
-      print('Erreur lors du chargement des favoris: $e');
+      logger.e('Erreur lors du chargement des favoris: $e');
       setState(() {
         _isLoading = false;
       });
@@ -119,7 +122,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> with SingleTickerProv
         _savedSearches = savedSearches;
       });
     } catch (e) {
-      print('Erreur lors du chargement des recherches sauvegardées: $e');
+      logger.e('Erreur lors du chargement des recherches sauvegardées: $e');
     }
   }
 

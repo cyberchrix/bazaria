@@ -7,6 +7,8 @@ import '../services/favorites_service.dart';
 
 final logger = Logger();
 
+
+
 class AdCard extends StatefulWidget {
   final Ad ad;
   final int index;
@@ -168,7 +170,7 @@ class _AdCardState extends State<AdCard> {
                   const SizedBox(height: 1),
                   Text(
                     '${ad.price.toStringAsFixed(0)} €',
-                    style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryColor, fontSize: 12),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryColor, fontSize: 16),
                   ),
                   const SizedBox(height: 1),
                   Text(

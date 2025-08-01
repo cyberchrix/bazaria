@@ -31,8 +31,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     _OnboardingPage(
       image: 'assets/onboarding/onboarding_step_4.png',
-      title: 'Recevez des notifications',
-      description: 'Soyez alerté en temps réel pour ne rien manquer.',
+      title: 'Trouvez rapidement',
+      description: 'Recherchez et trouvez ce que vous cherchez en quelques clics.',
     ),
   ];
 

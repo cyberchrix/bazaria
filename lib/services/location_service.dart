@@ -1,5 +1,8 @@
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:logger/logger.dart';
+
+final logger = Logger();
 
 class LocationService {
   // Cache pour les résultats de recherche
@@ -8,23 +11,23 @@ class LocationService {
   /// Test de l'API Google Geocoding
   static Future<bool> testGoogleAPI() async {
     try {
-      print('🧪 Test de l\'API Google Geocoding...');
+      logger.d('🧪 Test de l\'API Google Geocoding...');
       List<Location> locations = await locationFromAddress('Paris');
-      print('✅ API Google fonctionne ! ${locations.length} résultats trouvés');
+      logger.d('✅ API Google fonctionne ! ${locations.length} résultats trouvés');
       return true;
     } catch (e) {
-      print('❌ Erreur API Google: $e');
+      logger.e('❌ Erreur API Google: $e');
       return false;
     }
   }
 
   /// Recherche Google Maps pour villes et adresses
   static Future<List<CityResult>> searchTest(String query) async {
-    print('🔍 Recherche Google pour: "$query"');
+    logger.d('🔍 Recherche Google pour: "$query"');
     try {
       // Recherche normale avec Google
       List<Location> locations = await locationFromAddress(query);
-      print('📍 ${locations.length} résultats Google trouvés');
+      logger.d('📍 ${locations.length} résultats Google trouvés');
       
       List<CityResult> results = [];
       Set<String> addedCities = {}; // Pour éviter les doublons de villes
@@ -79,20 +82,20 @@ class LocationService {
             }
           }
         } catch (e) {
-          print('Erreur placemark: $e');
+          logger.e('Erreur placemark: $e');
         }
       }
       
       // Si on n'a pas trouvé de villes, essayer une recherche plus spécifique
       if (results.where((r) => r.street.isEmpty).isEmpty) {
-        print('🔄 Aucune ville trouvée, recherche alternative...');
+        logger.d('🔄 Aucune ville trouvée, recherche alternative...');
         try {
           // Recherche avec "ville" pour forcer les résultats de ville
           List<Location> cityLocations = await locationFromAddress('$query, France');
           
           // Si c'est Paris, essayer une recherche encore plus spécifique
           if (query.toLowerCase() == 'paris' && cityLocations.isEmpty) {
-            print('🗼 Recherche spéciale pour Paris...');
+            logger.d('🗼 Recherche spéciale pour Paris...');
             cityLocations = await locationFromAddress('Paris, Île-de-France, France');
           }
           
@@ -128,13 +131,13 @@ class LocationService {
             }
           }
         } catch (e) {
-          print('Erreur recherche alternative: $e');
+          logger.e('Erreur recherche alternative: $e');
         }
       }
       
       // Si toujours pas de villes, alors seulement ajouter des adresses
       if (results.where((r) => r.street.isEmpty).isEmpty) {
-        print('⚠️ Aucune ville trouvée, ajout d\'adresses...');
+        logger.d('⚠️ Aucune ville trouvée, ajout d\'adresses...');
         for (Location location in locations.take(5)) {
           try {
             List<Placemark> placemarks = await placemarkFromCoordinates(
@@ -165,7 +168,7 @@ class LocationService {
               }
             }
           } catch (e) {
-            print('Erreur placemark pour adresse: $e');
+            logger.e('Erreur placemark pour adresse: $e');
           }
         }
       }
@@ -181,13 +184,13 @@ class LocationService {
         finalResults.addAll(results.where((r) => r.street.isNotEmpty).take(3 - finalResults.length));
       }
       
-      print('🏙️ ${results.where((r) => r.street.isEmpty).length} villes trouvées');
-      print('📍 ${results.where((r) => r.street.isNotEmpty).length} adresses trouvées');
-      print('📋 ${finalResults.length} résultats finaux');
+      logger.d('🏙️ ${results.where((r) => r.street.isEmpty).length} villes trouvées');
+      logger.d('📍 ${results.where((r) => r.street.isNotEmpty).length} adresses trouvées');
+      logger.d('📋 ${finalResults.length} résultats finaux');
       
       return finalResults;
     } catch (e) {
-      print('❌ Erreur recherche Google: $e');
+      logger.e('❌ Erreur recherche Google: $e');
       return [];
     }
   }
@@ -198,25 +201,25 @@ class LocationService {
 
     // Vérifier le cache
     if (_searchCache.containsKey(query)) {
-      print('📦 Résultats depuis le cache pour: "$query"');
+      logger.d('📦 Résultats depuis le cache pour: "$query"');
       return _searchCache[query]!;
     }
 
-    print('🔍 Recherche Google pour: "$query"');
+    logger.d('🔍 Recherche Google pour: "$query"');
     
     try {
       List<CityResult> results = await searchTest(query);
       
       if (results.isNotEmpty) {
-        print('✅ ${results.length} résultats Google trouvés');
+        logger.d('✅ ${results.length} résultats Google trouvés');
         _searchCache[query] = results;
         return results;
       } else {
-        print('⚠️ Aucun résultat trouvé pour: "$query"');
+        logger.d('⚠️ Aucun résultat trouvé pour: "$query"');
         return [];
       }
     } catch (e) {
-      print('❌ Erreur lors de la recherche Google: $e');
+      logger.e('❌ Erreur lors de la recherche Google: $e');
       return [];
     }
   }
@@ -234,7 +237,7 @@ class LocationService {
       }
       return null;
     } catch (e) {
-      print('Erreur lors de la récupération des coordonnées: $e');
+      logger.e('Erreur lors de la récupération des coordonnées: $e');
       return null;
     }
   }
@@ -257,7 +260,7 @@ class LocationService {
 
       return await Geolocator.getCurrentPosition();
     } catch (e) {
-      print('Erreur lors de la récupération de la position: $e');
+      logger.e('Erreur lors de la récupération de la position: $e');
       return null;
     }
   }

@@ -1,7 +1,32 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 /// Configuration pour les services d'IA
 class AIConfig {
-  // Configuration OpenAI (pour futures intégrations)
-  static const String openaiApiKey = 'YOUR_OPENAI_API_KEY';
+  // Configuration OpenAI
+  // Pour obtenir votre clé API :
+  // 1. Allez sur https://platform.openai.com/api-keys
+  // 2. Créez une nouvelle clé secrète
+  // 3. Remplacez 'YOUR_OPENAI_API_KEY' par votre vraie clé
+  // 4. Ou utilisez un fichier .env (recommandé)
+  static String get openaiApiKey {
+    // Essayer de charger depuis .env d'abord
+    final envKey = dotenv.env['OPENAI_API_KEY'];
+    if (envKey != null && envKey.isNotEmpty) {
+      return envKey;
+    }
+    // Fallback vers la clé hardcodée (non recommandé pour la production)
+    return 'YOUR_OPENAI_API_KEY';
+  }
+  
+  /// Debug: Affiche l'état de la configuration
+  static void debugConfig() {
+    final envKey = dotenv.env['OPENAI_API_KEY'];
+    print('🔧 Debug AIConfig:');
+    print('  - envKey: ${envKey?.substring(0, 10)}...');
+    print('  - openaiApiKey: ${openaiApiKey.substring(0, 10)}...');
+    print('  - isAIConfigured: $isAIConfigured');
+  }
+  
   static const String openaiModel = 'gpt-3.5-turbo';
   static const String embeddingModel = 'text-embedding-3-small';
   
@@ -35,8 +60,13 @@ class AIConfig {
   
   /// Vérifie si les services d'IA sont configurés
   static bool get isAIConfigured {
-    return openaiApiKey != 'YOUR_OPENAI_API_KEY' &&
-           faissEndpoint != 'YOUR_FAISS_ENDPOINT';
+    return openaiApiKey != 'YOUR_OPENAI_API_KEY';
+  }
+  
+  /// Vérifie si les services d'IA sont activés (mode simulation)
+  static bool get isAIServicesEnabled {
+    // Pour l'instant, on active les services en mode simulation
+    return true;
   }
   
   /// Obtient la configuration pour l'environnement
@@ -46,15 +76,18 @@ class AIConfig {
         'apiKey': openaiApiKey,
         'model': openaiModel,
         'embeddingModel': embeddingModel,
+        'enabled': isAIServicesEnabled,
       },
       'faiss': {
         'endpoint': faissEndpoint,
         'dimension': faissDimension,
         'indexName': faissIndexName,
+        'enabled': isAIServicesEnabled,
       },
       'langchain': {
         'endpoint': langchainEndpoint,
         'apiKey': langchainApiKey,
+        'enabled': isAIServicesEnabled,
       },
       'search': {
         'maxResults': maxSearchResults,

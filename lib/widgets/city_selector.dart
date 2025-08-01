@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/location_service.dart';
+import 'package:logger/logger.dart';
+
+final logger = Logger();
 
 class CitySelector extends StatefulWidget {
   final Function(CityResult) onCitySelected;
@@ -22,7 +25,6 @@ class _CitySelectorState extends State<CitySelector> {
   List<CityResult> _searchResults = [];
   bool _isSearching = false;
   bool _showResults = false;
-  CityResult? _selectedCity;
 
   @override
   void initState() {
@@ -68,7 +70,7 @@ class _CitySelectorState extends State<CitySelector> {
         _isSearching = false;
       });
     } catch (e) {
-      print('Erreur dans CitySelector: $e');
+      logger.e('Erreur dans CitySelector: $e');
       setState(() {
         _searchResults = [];
         _isSearching = false;
@@ -78,7 +80,6 @@ class _CitySelectorState extends State<CitySelector> {
 
   void _selectCity(CityResult city) {
     setState(() {
-      _selectedCity = city;
       _controller.text = city.fullAddress;
       _showResults = false;
     });
@@ -115,7 +116,6 @@ class _CitySelectorState extends State<CitySelector> {
                         onPressed: () {
                           _controller.clear();
                           setState(() {
-                            _selectedCity = null;
                             _showResults = false;
                           });
                         },

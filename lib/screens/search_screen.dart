@@ -3,6 +3,10 @@ import 'package:appwrite/appwrite.dart' as appw;
 import '../services/appwrite_service.dart';
 import '../models/ad.dart';
 import '../services/ai_search_service.dart';
+
+import '../services/langchain_service.dart';
+import '../services/openai_service.dart';
+import '../services/backend_api_service.dart';
 import '../services/saved_searches_service.dart';
 import '../widgets/ad_card.dart';
 import 'dart:async';
@@ -39,6 +43,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   bool _isLoading = false;
   bool _hasSearched = false;
   bool _isSearching = false;
+
+
   
   // Filtres
   String? _selectedCategory;
@@ -149,13 +155,13 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         _isLoading = false;
       });
       
-      print('📦 Annonces chargées: ${_allAds.length}');
+      logger.d('📦 Annonces chargées: ${_allAds.length}');
       // Afficher quelques exemples d'annonces pour déboguer
       if (_allAds.isNotEmpty) {
-        print('📋 Exemples d\'annonces:');
+        logger.d('📋 Exemples d\'annonces:');
         for (int i = 0; i < _allAds.length && i < 3; i++) {
           final ad = _allAds[i];
-          print('  - ${ad.title} (${ad.price}€) - ${ad.description.substring(0, ad.description.length > 50 ? 50 : ad.description.length)}...');
+          logger.d('  - ${ad.title} (${ad.price}€) - ${ad.description.substring(0, ad.description.length > 50 ? 50 : ad.description.length)}...');
         }
       }
       
@@ -169,7 +175,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         });
       }
     } catch (e) {
-      print('❌ Erreur lors du chargement des annonces: $e');
+      logger.e('❌ Erreur lors du chargement des annonces: $e');
       setState(() {
         _isLoading = false;
       });
@@ -177,23 +183,23 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   }
 
   void _applyInitialFilters(Map<String, dynamic> filters) {
-    print('🔧 Application des filtres initiaux: $filters');
+    logger.d('🔧 Application des filtres initiaux: $filters');
     setState(() {
       if (filters.containsKey('category') && filters['category'] != null) {
         _selectedCategory = filters['category'] as String;
-        print('🏷️ Catégorie sélectionnée: $_selectedCategory');
+        logger.d('🏷️ Catégorie sélectionnée: $_selectedCategory');
       }
       if (filters.containsKey('minPrice') && filters['minPrice'] != null) {
         _minPrice = (filters['minPrice'] as num).toDouble();
-        print('💰 Prix minimum: $_minPrice');
+        logger.d('💰 Prix minimum: $_minPrice');
       }
       if (filters.containsKey('maxPrice') && filters['maxPrice'] != null) {
         _maxPrice = (filters['maxPrice'] as num).toDouble();
-        print('💰 Prix maximum: $_maxPrice');
+        logger.d('💰 Prix maximum: $_maxPrice');
       }
       if (filters.containsKey('sortBy') && filters['sortBy'] != null) {
         _sortBy = filters['sortBy'] as String;
-        print('📊 Tri: $_sortBy');
+        logger.d('📊 Tri: $_sortBy');
       }
     });
   }
@@ -238,102 +244,96 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   }
 
   Future<void> _performSearch() async {
-    final query = _searchController.text.trim();
-    
-    print('🔍 Début de la recherche pour: "$query"');
-    print('📊 Nombre total d\'annonces chargées: ${_allAds.length}');
-    
-    if (query.isEmpty) {
+    if (_searchController.text.trim().isEmpty) {
       setState(() {
         _searchResults = [];
         _hasSearched = false;
-        _isSearching = false;
       });
       return;
     }
 
     setState(() {
-      _hasSearched = true;
       _isSearching = true;
+      _hasSearched = true;
     });
 
     try {
-      // Améliorer la requête avec l'IA
-      final enhancedQuery = await AISearchService.enhanceQuery(query);
-      print('🚀 Requête améliorée: "$enhancedQuery"');
+      final query = _searchController.text.trim();
+      List<Ad> results = [];
+
+            logger.d('🔍 Début recherche: "$query"');
       
-      // Utiliser la recherche IA avancée sur les données limitées (1000 annonces max)
-      final results = await AISearchService.advancedSearch(
+      // Recherche traditionnelle avec amélioration IA (mode par défaut)
+      final enhancedQuery = await OpenAIService.enhanceQuery(query);
+      results = await AISearchService.advancedSearch(
         enhancedQuery,
         _allAds,
         _categoryLabels,
-        maxResults: 50,
       );
+      logger.d('🔍 Recherche traditionnelle améliorée: ${results.length} résultats');
 
-      print('📈 Résultats trouvés: ${results.length}');
-
-      // Afficher les détails de l'annonce trouvée
-      if (results.isNotEmpty) {
-        final ad = results.first;
-        print('📋 Annonce trouvée: "${ad.title}" - Prix: ${ad.price}€');
-      }
-
-      // Appliquer les filtres supplémentaires
-      List<Ad> filteredResults = results;
-      
-      // Filtre par catégorie
-      if (_selectedCategory != null) {
-        print('🏷️ Filtrage par catégorie - ID sélectionné: $_selectedCategory');
-        print('🏷️ Nombre de catégories disponibles: ${_categoryLabels.length}');
-        print('🏷️ Catégories disponibles: ${_categoryLabels.keys.toList()}');
-        
-        filteredResults = filteredResults.where((ad) {
-          final matches = ad.subCategoryId == _selectedCategory;
-          print('  - "${ad.title}": catégorie ${ad.subCategoryId} (match: $matches)');
-          return matches;
-        }).toList();
-        print('🏷️ Après filtrage par catégorie: ${filteredResults.length}');
-      }
-      
-      // Filtre par prix
-      if (_minPrice != null || _maxPrice != null) {
-        print('💰 Filtrage par prix - Min: $_minPrice, Max: $_maxPrice');
-        filteredResults = filteredResults.where((ad) {
-          bool matchesMin = _minPrice == null || ad.price >= _minPrice!;
-          bool matchesMax = _maxPrice == null || ad.price <= _maxPrice!;
-          print('  - "${ad.title}": ${ad.price}€ (Min: $matchesMin, Max: $matchesMax)');
-          return matchesMin && matchesMax;
-        }).toList();
-        print('💰 Après filtrage par prix: ${filteredResults.length}');
-      }
+      // Appliquer les filtres
+      results = _applyFilters(results);
 
       setState(() {
-        _searchResults = filteredResults;
+        _searchResults = results;
         _isSearching = false;
       });
-      
-      print('✅ Recherche terminée. Résultats finaux: ${_searchResults.length}');
-      
-      // Trier les résultats
-      _sortResults();
+
+      logger.d('✅ Recherche terminée: ${results.length} résultats finaux');
     } catch (e) {
-      print('❌ Erreur lors de la recherche: $e');
+      logger.e('❌ Erreur lors de la recherche: $e');
       setState(() {
+        _searchResults = [];
         _isSearching = false;
       });
     }
   }
 
-  void _sortResults() {
+  List<Ad> _applyFilters(List<Ad> results) {
+    List<Ad> filteredResults = results;
+
+    // Filtre par catégorie
+    if (_selectedCategory != null) {
+      logger.d('��️ Filtrage par catégorie - ID sélectionné: $_selectedCategory');
+      logger.d('🏷️ Nombre de catégories disponibles: ${_categoryLabels.length}');
+      logger.d('🏷️ Catégories disponibles: ${_categoryLabels.keys.toList()}');
+      
+      filteredResults = filteredResults.where((ad) {
+        final matches = ad.subCategoryId == _selectedCategory;
+        logger.d('  - "${ad.title}": catégorie ${ad.subCategoryId} (match: $matches)');
+        return matches;
+      }).toList();
+      logger.d('🏷️ Après filtrage par catégorie: ${filteredResults.length}');
+    }
+    
+    // Filtre par prix
+    if (_minPrice != null || _maxPrice != null) {
+      logger.d('💰 Filtrage par prix - Min: $_minPrice, Max: $_maxPrice');
+      filteredResults = filteredResults.where((ad) {
+        bool matchesMin = _minPrice == null || ad.price >= _minPrice!;
+        bool matchesMax = _maxPrice == null || ad.price <= _maxPrice!;
+        logger.d('  - "${ad.title}": ${ad.price}€ (Min: $matchesMin, Max: $matchesMax)');
+        return matchesMin && matchesMax;
+      }).toList();
+      logger.d('�� Après filtrage par prix: ${filteredResults.length}');
+    }
+
+    // Trier les résultats
+    _sortResults(filteredResults);
+    return filteredResults;
+  }
+
+  void _sortResults(List<Ad> results) {
     switch (_sortBy) {
       case 'price_asc':
-        _searchResults.sort((a, b) => a.price.compareTo(b.price));
+        results.sort((a, b) => a.price.compareTo(b.price));
         break;
       case 'price_desc':
-        _searchResults.sort((a, b) => b.price.compareTo(a.price));
+        results.sort((a, b) => b.price.compareTo(a.price));
         break;
       case 'date':
-        _searchResults.sort((a, b) => b.publicationDate.compareTo(a.publicationDate));
+        results.sort((a, b) => b.publicationDate.compareTo(a.publicationDate));
         break;
       case 'relevance':
       default:
@@ -783,6 +783,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               icon: const Icon(Icons.bookmark_border),
               onPressed: _showSaveSearchDialog,
             ),
+
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () async {
@@ -822,55 +823,48 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                   ),
                 ],
               ),
-              child: TextField(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                autofocus: true,
-                textAlignVertical: TextAlignVertical.center,
-                decoration: InputDecoration(
-                  hintText: 'Rechercher un produit...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_searchController.text.isNotEmpty)
-                        IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchResults = [];
-                              _hasSearched = false;
-                            });
-                          },
-                        ),
-                      IconButton(
-                        icon: const Icon(Icons.camera_alt),
-                        onPressed: () {
-                          // TODO: Implémenter la recherche par image
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Recherche par image à venir !')),
-                          );
-                        },
+              child: Column(
+                children: [
+
+                  // Champ de recherche
+                  TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    decoration: InputDecoration(
+                      hintText: 'Rechercher des annonces...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
                       ),
-                    ],
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, color: Colors.grey),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {
+                                  _searchResults = [];
+                                  _hasSearched = false;
+                                });
+                              },
+                            )
+                          : null,
+                    ),
+                    onSubmitted: (value) {
+                      _performSearch();
+                    },
                   ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                ),
+                ],
               ),
             ),
             
@@ -929,6 +923,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     
     return _buildSuggestionsWidget(suggestions);
   }
+
+
 
   Widget _buildSuggestionsWidget(List<String> suggestions) {
 

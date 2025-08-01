@@ -1,6 +1,9 @@
 import '../models/ad.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
+import 'package:logger/logger.dart';
+
+final logger = Logger();
 
 class AISearchService {
   // Cache pour les résultats de recherche
@@ -25,9 +28,9 @@ class AISearchService {
         ),
       );
       _synonymsLoaded = true;
-      print('✅ Synonymes chargés avec succès: ${_synonyms.length} entrées');
+      logger.d('✅ Synonymes chargés avec succès: ${_synonyms.length} entrées');
     } catch (e) {
-      print('❌ Erreur lors du chargement des synonymes: $e');
+      logger.e('❌ Erreur lors du chargement des synonymes: $e');
       // Fallback avec quelques synonymes de base
       _synonyms = {
         'iphone': ['smartphone', 'apple', 'mobile', 'téléphone'],

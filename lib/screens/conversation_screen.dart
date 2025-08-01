@@ -29,7 +29,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final conversation = widget.conversation;
     final adTitle = conversation['adTitle'] as String;
     final adPrice = conversation['adPrice'] as int;
-    final userName = conversation['userName'] as String;
     
     // Messages fake basés sur le type de conversation
     if (conversation['id'] == '1') { // Marie Dubois - Canapé

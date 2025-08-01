@@ -1,5 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/ad.dart';
+import 'package:logger/logger.dart';
+
+final logger = Logger();
 
 class FavoritesService {
   static const String _favoritesKey = 'user_favorites';
@@ -30,7 +33,7 @@ class FavoritesService {
       }
       return false;
     } catch (e) {
-      print('Erreur lors de l\'ajout aux favoris: $e');
+      logger.e('Erreur lors de l\'ajout aux favoris: $e');
       return false;
     }
   }
@@ -48,7 +51,7 @@ class FavoritesService {
       }
       return false;
     } catch (e) {
-      print('Erreur lors de la suppression des favoris: $e');
+      logger.e('Erreur lors de la suppression des favoris: $e');
       return false;
     }
   }
@@ -75,7 +78,7 @@ class FavoritesService {
       // TODO: Implémenter la récupération depuis Appwrite
       return [];
     } catch (e) {
-      print('Erreur lors de la récupération des favoris: $e');
+      logger.e('Erreur lors de la récupération des favoris: $e');
       return [];
     }
   }
@@ -87,7 +90,7 @@ class FavoritesService {
       await prefs.remove(_favoritesKey);
       return true;
     } catch (e) {
-      print('Erreur lors de la suppression de tous les favoris: $e');
+      logger.e('Erreur lors de la suppression de tous les favoris: $e');
       return false;
     }
   }

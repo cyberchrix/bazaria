@@ -7,33 +7,36 @@ import 'firebase_options.dart';
 import 'package:rive/rive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/onboarding_screen.dart';
-import 'services/notification_service.dart';
+
 import 'package:logger/logger.dart';
-import 'package:flutter/foundation.dart';
-import 'widgets/performance_test_widget.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 final logger = Logger();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Charger les variables d'environnement
+  try {
+    await dotenv.load(fileName: ".env");
+    logger.d('✅ Fichier .env chargé avec succès');
+    
+    // Debug: vérifier la clé API
+    final apiKey = dotenv.env['OPENAI_API_KEY'];
+    if (apiKey != null && apiKey.isNotEmpty) {
+      logger.d('✅ Clé API OpenAI trouvée: ${apiKey.substring(0, 10)}...');
+    } else {
+      logger.w('⚠️ Clé API OpenAI non trouvée dans .env');
+    }
+  } catch (e) {
+    logger.w('⚠️ Fichier .env non trouvé, utilisation des valeurs par défaut: $e');
+  }
+  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
   await initializeDateFormatting('fr_FR', null);
-  // Initialiser le service de notifications avec gestion d'erreur
-  try {
-    await NotificationService().initialize();
-    final token = await NotificationService().getToken();
-    if (token != null) {
-      logger.d('🔑 FCM Token: $token');
-    } else {
-      logger.d('ℹ️ Token FCM non disponible pour le moment (attendre quelques secondes ou tester sur un vrai appareil).');
-    }
-    await NotificationService().debugAPNSToken();
-    logger.d('✅ Service de notifications initialisé avec succès');
-  } catch (e) {
-    logger.e('❌ Erreur inattendue lors de l\'initialisation des notifications: $e');
-  }
+
   runApp(const BazariaRoot());
 }
 

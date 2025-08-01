@@ -20,11 +20,12 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
-import '../services/notification_service.dart';
+
 import '../services/favorites_service.dart';
 import '../services/criteria_service.dart';
 import '../widgets/ad_card.dart';
 import '../widgets/performance_test_widget.dart';
+
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
@@ -43,7 +44,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Map<String, Map<String, dynamic>> _categoryLabels = {};
   bool _loadingAds = true;
   int favoritesCount = 0;
-  int unreadNotifications = 3;
+
   StreamSubscription? _realtimeSub;
   
   // Carrousel des publicités
@@ -139,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       });
     } catch (e) {
-      print('Erreur lors de la vérification de connectivité: $e');
+      logger.e('Erreur lors de la vérification de connectivité: $e');
       setState(() {
         _isConnected = false;
         _isCheckingConnection = false;
@@ -184,6 +185,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  // Afficher un message d'erreur si la connexion est perdue
   Widget _buildNoConnectionView() {
     return Center(
       child: Container(
@@ -828,19 +830,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: IconButton(
-                  icon: badges.Badge(
-                    showBadge: unreadNotifications > 0,
-                    badgeContent: Text(
-                      '$unreadNotifications',
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
-                    badgeStyle: badges.BadgeStyle(
-                      badgeColor: Color(0xFFF15A22),
-                      padding: const EdgeInsets.all(7),
-                    ),
-                    position: badges.BadgePosition.topEnd(top: -6, end: -6),
-                    child: const Icon(Icons.notifications),
-                  ),
+                  icon: const Icon(Icons.notifications),
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (context) => const NotificationsScreen()),
@@ -853,19 +843,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       body: (!_isConnected || _isCheckingConnection)
           ? _buildNoConnectionView()
           : views[_selectedIndex],
-      floatingActionButton: kDebugMode
-          ? FloatingActionButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const PerformanceTestWidget(),
-                  ),
-                );
-              },
-              backgroundColor: Colors.blue,
-              child: const Icon(Icons.speed, color: Colors.white),
-            )
-          : null,
+      floatingActionButton: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'performance_test',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const PerformanceTestWidget(),
+                ),
+              );
+            },
+            backgroundColor: Colors.blue,
+            child: const Icon(Icons.speed, color: Colors.white),
+          ),
+
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         items: <BottomNavigationBarItem>[
@@ -1273,7 +1268,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   /// Devine l'unité basée sur la valeur numérique
   String? _guessUnitFromNumericValue(String value, String label) {
     final labelLower = label.toLowerCase();
-    final valueLower = value.toLowerCase();
     
     // Si c'est un nombre et que le label contient "surface"
     if (labelLower.contains('surface') || labelLower.contains('superficie')) {
@@ -1496,8 +1490,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             // Debug de la structure des données
                             logger.d('🔍 Structure entry.value: ${entry.value} (type: ${entry.value.runtimeType})');
                             
-                            final value = entry.value is Map ? entry.value['value'] : entry.value;
-                            final unit = entry.value is Map ? entry.value['unit'] : null;
+                            final value = entry.value['value'];
+                            final unit = entry.value['unit'];
                             
                             // Vérifier si l'unité est déjà présente dans la valeur
                             String displayValue;
@@ -1711,25 +1705,14 @@ class _CategoryScreenState extends State<CategoryScreen> {
               child: const Text('Annuler'),
             ),
             ElevatedButton(
-              onPressed: () async {
-                try {
-                  await NotificationService().subscribeToCategory(widget.categoryId);
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Vous êtes maintenant abonné aux notifications de cette catégorie !'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                } catch (e) {
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Erreur lors de l\'abonnement: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
+              onPressed: () {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Fonctionnalité de notifications désactivée'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
               },
               child: const Text('S\'abonner'),
             ),
@@ -1844,7 +1827,7 @@ class _AdCarouselState extends State<_AdCarousel> {
 
   Future<void> _loadAdsFromAppwrite() async {
     try {
-      print('🔄 Chargement des publicités depuis Appwrite...');
+      logger.d('🔄 Chargement des publicités depuis Appwrite...');
       final databases = AppwriteService().databases;
       final result = await databases.listDocuments(
         databaseId: '687ccdcf0000676911f1',
@@ -1856,7 +1839,7 @@ class _AdCarouselState extends State<_AdCarousel> {
         ],
       );
       
-      print('📊 Publicités trouvées: ${result.documents.length}');
+              logger.d('📊 Publicités trouvées: ${result.documents.length}');
       
       setState(() {
         _adsData = result.documents.map((doc) => {
@@ -1868,7 +1851,7 @@ class _AdCarouselState extends State<_AdCarousel> {
         _isLoading = false;
       });
       
-      print('✅ Publicités chargées avec succès: ${_adsData.length}');
+              logger.d('✅ Publicités chargées avec succès: ${_adsData.length}');
       
       // Précharger les images
       _preloadImages();
@@ -1877,14 +1860,14 @@ class _AdCarouselState extends State<_AdCarousel> {
       if (_adsData.isNotEmpty) {
         _startAutoScroll();
         _startProgressTimer();
-      } else {
-        print('⚠️ Aucune publicité trouvée, utilisation du fallback local');
+              } else {
+          logger.w('⚠️ Aucune publicité trouvée, utilisation du fallback local');
+          // _useLocalFallback();
+        }
+      } catch (e) {
+        logger.e('❌ Erreur lors du chargement des publicités: $e');
         // _useLocalFallback();
       }
-    } catch (e) {
-      print('❌ Erreur lors du chargement des publicités: $e');
-      // _useLocalFallback();
-    }
   }
 
   void _preloadImages() {
@@ -1981,9 +1964,9 @@ class _AdCarouselState extends State<_AdCarousel> {
                     if (url != null && url.isNotEmpty) {
                       try {
                         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                      } catch (e) {
-                        print('Erreur lors de l\'ouverture du lien: $e');
-                      }
+                          } catch (e) {
+      logger.e('Erreur lors de l\'ouverture du lien: $e');
+    }
                     }
                   },
                   child: ClipRRect(

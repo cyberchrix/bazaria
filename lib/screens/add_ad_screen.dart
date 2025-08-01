@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:logger/logger.dart';
 import '../services/category_service.dart';
 import 'dart:io';
 import 'dart:convert';
-import 'package:logger/logger.dart';
 import 'package:appwrite/appwrite.dart';
 import '../services/appwrite_service.dart';
 import '../widgets/city_selector.dart';
 import '../services/criteria_service.dart';
 import 'criteria_screen.dart';
+
 final logger = Logger();
 
 class AddAdScreen extends StatefulWidget {
@@ -148,6 +149,17 @@ class _AddAdScreenState extends State<AddAdScreen> {
     setState(() {
       _criteriaErrors = errors;
     });
+    
+    // Afficher les erreurs si il y en a
+    if (errors.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreurs de validation: ${errors.join(', ')}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+    
     return errors.isEmpty;
   }
 
@@ -203,7 +215,7 @@ class _AddAdScreenState extends State<AddAdScreen> {
         setState(() => _photos.add(picked));
       }
     } catch (e) {
-      print('Erreur lors de la sélection de l\'image: $e');
+      logger.e('Erreur lors de la sélection de l\'image: $e');
       
       String errorMessage = 'Erreur lors de la sélection de l\'image';
       
@@ -811,7 +823,11 @@ class _AddAdScreenState extends State<AddAdScreen> {
                 foregroundColor: Colors.white,
               ),
               onPressed: (_price != null && _price! > 0)
-                  ? _saveAdToAppwrite
+                  ? () {
+                      if (_validateCriteria()) {
+                        _saveAdToAppwrite();
+                      }
+                    }
                   : null,
               child: const Text('Publier'),
             ),

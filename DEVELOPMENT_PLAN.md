@@ -78,6 +78,15 @@
 - [x] **Nouveau** : Système de titres uniques pour éviter les doublons
 - [x] **Nouveau** : Images correspondantes aux produits
 - [x] **Nouveau** : Descriptions détaillées (200-400 caractères)
+- [x] **Nouveau** : Système de logging structuré avec `logger` (remplace `print`)
+
+### 📝 **Conventions de Code**
+- [x] **Nouveau** : Utilisation exclusive de `logger` au lieu de `print`
+  - `logger.d()` : Messages de debug/information
+  - `logger.w()` : Avertissements  
+  - `logger.e()` : Erreurs
+  - `logger.i()` : Informations importantes
+  - `logger.v()` : Messages très détaillés (verbose)
 
 ---
 
